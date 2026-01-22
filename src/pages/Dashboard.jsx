@@ -29,7 +29,7 @@ export default function Dashboard() {
   }, [question, user])
 
   const fetchTodayQuestion = async () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' })
     const { data } = await supabase
       .from('daily_questions')
       .select('*')
