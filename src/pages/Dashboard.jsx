@@ -47,6 +47,7 @@ export default function Dashboard() {
       .select('*')
       .eq('question_id', question.id)
       .eq('user_id', user.id)
+      .is('deleted_at', null)  // 削除されていないもののみ
       .single()
     
     if (data) {
@@ -70,6 +71,7 @@ export default function Dashboard() {
         )
       `)
       .eq('question_id', question.id)
+      .is('deleted_at', null)  // 削除されていないもののみ取得
       .order('created_at', { ascending: false })
     
     if (data) {
@@ -117,6 +119,30 @@ export default function Dashboard() {
     fetchAnswers()
   }
 
+  // 削除機能（Soft Delete）
+  const handleDelete = async (answerId) => {
+    if (!confirm('この投稿を削除しますか？')) return
+    
+    const { error } = await supabase
+      .from('answers')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', answerId)
+    
+    if (error) {
+      alert('削除に失敗しました')
+      console.error(error)
+    } else {
+      // 自分の投稿を削除した場合、入力欄もリセット
+      if (myAnswer && myAnswer.id === answerId) {
+        setMyAnswer(null)
+        setAnswer('')
+      }
+      // 再取得
+      fetchAnswers()
+      fetchMyAnswer()
+    }
+  }
+
   const handleReaction = async (answerId, reactionType) => {
     const key = `${answerId}-${reactionType}`
     const isReacted = myReactions[key]
@@ -159,10 +185,10 @@ export default function Dashboard() {
   )
   const publicAnswers = answers.filter(a => a.is_public)
   
-  // Get demo answers for Open Wall based on current question
+  // Get demo answers for All based on current question
   const demoAnswers = question ? getDemoAnswers(question.question_text) : []
   
-  // Combine real answers with demo answers for Open Wall (demo answers shown after real ones)
+  // Combine real answers with demo answers for All (demo answers shown after real ones)
   const openWallAnswers = [...publicAnswers, ...demoAnswers]
   
   const displayAnswers = activeTab === 'group' ? groupAnswers : openWallAnswers
@@ -273,7 +299,7 @@ export default function Dashboard() {
                       : 'bg-white text-gray-500 border-2 border-gray-200'
                   }`}
                 >
-                  Open Wall にも公開
+                  All にも公開
                 </button>
               </div>
 
@@ -291,7 +317,7 @@ export default function Dashboard() {
 
               {myAnswer && (
                 <p className="text-center text-sm text-success font-semibold">
-                  投稿完了 — {isPublic ? 'Open Wall にも公開中' : 'My Group のみに公開中'}
+                  投稿完了 — {isPublic ? 'All にも公開中' : 'My Group のみに公開中'}
                 </p>
               )}
             </div>
@@ -326,7 +352,7 @@ export default function Dashboard() {
                     : 'bg-white text-gray-500'
                 }`}
               >
-                Open Wall
+                All
                 <span className={`px-2 py-0.5 rounded-lg text-xs ${
                   activeTab === 'public' ? 'bg-white/20' : 'bg-gray-100'
                 }`}>
@@ -340,6 +366,7 @@ export default function Dashboard() {
               {displayAnswers.map((a) => {
                 const sameCount = a.reactions?.filter(r => r.reaction_type === 'same').length || 0
                 const niceCount = a.reactions?.filter(r => r.reaction_type === 'nice').length || 0
+                const isMyPost = a.user_id === user.id
                 
                 return (
                   <div 
@@ -371,6 +398,16 @@ export default function Dashboard() {
                     <p className="text-sm leading-relaxed text-gray-700 mb-4">
                       {a.answer_text}
                     </p>
+
+                    {/* Delete Button (自分の投稿のみ) */}
+                    {isMyPost && !String(a.id).startsWith('demo-') && (
+                      <button
+                        onClick={() => handleDelete(a.id)}
+                        className="mb-3 text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1"
+                      >
+                        🗑 削除する
+                      </button>
+                    )}
 
                     {/* Reactions */}
                     <div className="flex flex-wrap gap-2">
