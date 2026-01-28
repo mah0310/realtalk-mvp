@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useBehaviorTracking } from '../hooks/useBehaviorTracking'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getDemoAnswers } from '../lib/demoData'
@@ -15,6 +16,16 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('group')
   const [myReactions, setMyReactions] = useState({})
   const [loading, setLoading] = useState(true)
+
+   // ↓↓↓ ここから追加 ↓↓↓
+   const prevAnswerRef = useRef('')
+   const { 
+     startTracking, 
+     handleTextChange, 
+     finishTracking, 
+     resetTracking 
+   } = useBehaviorTracking()
+   // ↑↑↑ ここまで追加 ↑↑↑
 
   useEffect(() => {
     fetchTodayQuestion()
@@ -97,11 +108,23 @@ export default function Dashboard() {
   const handleSubmitAnswer = async () => {
     if (!answer.trim() || !question) return
 
+    // 行動データを取得
+    const behaviorData = finishTracking(answer)
+    console.log('行動データ:', behaviorData)
+
     if (myAnswer) {
       // Update existing
       await supabase
         .from('answers')
-        .update({ answer_text: answer, is_public: isPublic })
+        .update({ 
+          answer_text: answer, 
+          is_public: isPublic,
+          // 行動データも更新
+          writing_duration_sec: behaviorData.writing_duration_sec,
+          backspace_count: behaviorData.backspace_count,
+          max_char_count: behaviorData.max_char_count,
+          final_char_count: behaviorData.final_char_count
+        })
         .eq('id', myAnswer.id)
     } else {
       // Create new
@@ -111,9 +134,18 @@ export default function Dashboard() {
           user_id: user.id,
           question_id: question.id,
           answer_text: answer,
-          is_public: isPublic
+          is_public: isPublic,
+          // 行動データを追加
+          writing_duration_sec: behaviorData.writing_duration_sec,
+          backspace_count: behaviorData.backspace_count,
+          max_char_count: behaviorData.max_char_count,
+          final_char_count: behaviorData.final_char_count
         })
     }
+    
+    // リセット
+    resetTracking()
+    prevAnswerRef.current = ''
     
     fetchMyAnswer()
     fetchAnswers()
@@ -264,14 +296,24 @@ export default function Dashboard() {
           {question && (
             <div className="space-y-3">
               <div className="relative">
-                <textarea
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  placeholder="正直に書いてみて..."
-                  rows={3}
-                  maxLength={500}
-                  className="w-full px-5 py-4 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 resize-none focus:border-primary focus:outline-none transition-colors"
-                />
+              <textarea
+                value={answer}
+                onChange={(e) => {
+                  const newValue = e.target.value
+                  handleTextChange(newValue, prevAnswerRef.current)
+                  prevAnswerRef.current = newValue
+                  setAnswer(newValue)
+                }}
+                onFocus={() => {
+                  if (!myAnswer) {
+                    startTracking()
+                  }
+                }}
+                placeholder="正直に書いてみて..."
+                rows={3}
+                maxLength={500}
+                className="w-full px-5 py-4 rounded-2xl bg-white border-2 border-gray-200 text-gray-800 resize-none focus:border-primary focus:outline-none transition-colors"
+              />
                 <span className="absolute bottom-3 right-4 text-xs text-gray-300">
                   {answer.length}/500
                 </span>
